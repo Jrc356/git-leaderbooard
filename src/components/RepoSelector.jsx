@@ -8,13 +8,45 @@ export default function RepoSelector({
   loading,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [hideForks, setHideForks] = useState(true);
+  const [sortBy, setSortBy] = useState("pushed"); // "pushed", "name", "stars", "size"
+
+  // Count forks for display
+  const forkCount = useMemo(() => repos.filter((r) => r.fork).length, [repos]);
 
   const filteredRepos = useMemo(() => {
-    if (!searchTerm) return repos;
-    return repos.filter((repo) =>
-      repo.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [repos, searchTerm]);
+    let result = repos;
+
+    // Filter forks
+    if (hideForks) {
+      result = result.filter((repo) => !repo.fork);
+    }
+
+    // Filter by search term
+    if (searchTerm) {
+      result = result.filter((repo) =>
+        repo.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      switch (sortBy) {
+        case "pushed":
+          return new Date(b.pushed_at || 0) - new Date(a.pushed_at || 0);
+        case "name":
+          return a.name.localeCompare(b.name);
+        case "stars":
+          return (b.stargazers_count || 0) - (a.stargazers_count || 0);
+        case "size":
+          return (b.size || 0) - (a.size || 0);
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [repos, searchTerm, hideForks, sortBy]);
 
   const handleToggle = (repo) => {
     const isSelected = selected.some((r) => r.id === repo.id);
@@ -26,7 +58,8 @@ export default function RepoSelector({
   };
 
   const handleSelectAll = () => {
-    onChange([...repos]);
+    // Select all visible (filtered) repos
+    onChange([...filteredRepos]);
   };
 
   const handleDeselectAll = () => {
@@ -43,11 +76,25 @@ export default function RepoSelector({
     onChange(newSelected);
   };
 
+  // Format date for display
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return "today";
+    if (diffDays === 1) return "yesterday";
+    if (diffDays < 30) return `${diffDays}d ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
+    return `${Math.floor(diffDays / 365)}y ago`;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-800">
-          Select Repositories ({selected.length} / {repos.length} selected)
+          Select Repositories ({selected.length} / {filteredRepos.length}{" "}
+          visible)
         </h3>
       </div>
 
@@ -85,6 +132,40 @@ export default function RepoSelector({
         )}
       </div>
 
+      {/* Filter and sort row */}
+      <div className="flex flex-wrap gap-3 items-center text-sm">
+        {/* Fork toggle */}
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={hideForks}
+            onChange={(e) => setHideForks(e.target.checked)}
+            className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+          />
+          <span className="text-gray-700">
+            Hide forks{" "}
+            {forkCount > 0 && (
+              <span className="text-gray-400">({forkCount})</span>
+            )}
+          </span>
+        </label>
+
+        {/* Sort dropdown */}
+        <div className="flex items-center gap-2">
+          <span className="text-gray-500">Sort by:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-2 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+          >
+            <option value="pushed">Recent Activity</option>
+            <option value="name">Name (A-Z)</option>
+            <option value="stars">Stars</option>
+            <option value="size">Size</option>
+          </select>
+        </div>
+      </div>
+
       {/* Repo list */}
       <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
         {filteredRepos.length === 0 ? (
@@ -110,6 +191,11 @@ export default function RepoSelector({
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">
                       {repo.name}
+                      {repo.fork && (
+                        <span className="ml-2 text-xs text-gray-400 font-normal">
+                          (fork)
+                        </span>
+                      )}
                     </p>
                     {repo.description && (
                       <p className="text-sm text-gray-500 truncate">
@@ -117,13 +203,23 @@ export default function RepoSelector({
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-gray-500">
+                  <div className="flex items-center gap-3 text-sm text-gray-500 flex-shrink-0">
                     {repo.language && (
                       <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">
                         {repo.language}
                       </span>
                     )}
-                    <span>⭐ {repo.stargazers_count}</span>
+                    <span>⭐ {repo.stargazers_count || 0}</span>
+                    {repo.pushed_at && (
+                      <span
+                        className="text-xs text-gray-400"
+                        title={`Last pushed: ${new Date(
+                          repo.pushed_at
+                        ).toLocaleDateString()}`}
+                      >
+                        {formatDate(repo.pushed_at)}
+                      </span>
+                    )}
                   </div>
                 </li>
               );
